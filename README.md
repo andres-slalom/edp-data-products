@@ -4,9 +4,9 @@ This proof of concept is focused completely on GitHub flow.
 
 The repository keeps the current folders as-is, but the CI/CD behavior is now centered on branch promotion and selective execution by path.
 
-## Promotion Model 
+## Promotion Model
 
-The PoC uses three long-lived branches :
+The PoC uses three long-lived branches:
 
 - `develop`
 - `qa`
