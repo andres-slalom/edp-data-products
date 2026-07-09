@@ -1,0 +1,7 @@
+# Example ownership for the PoC
+
+/adsl/ @example/adsl-team
+/airflow/ @example/data-platform
+/dbt/ @example/analytics-engineering
+/databricks/ @example/data-engineering
+/.github/ @example/platform-team

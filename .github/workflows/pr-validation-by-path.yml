@@ -1,0 +1,310 @@
+name: PR Validation By Path
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - qa
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+jobs:
+  check-promotion-route:
+    runs-on: ubuntu-latest
+    outputs:
+      base_ref: ${{ steps.route.outputs.base_ref }}
+      head_ref: ${{ steps.route.outputs.head_ref }}
+    steps:
+      - name: Validate allowed source and target branches
+        id: route
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "PR route: ${HEAD_REF} -> ${BASE_REF}"
+
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+
+          # Promotion rules for this PoC:
+          # 1) feature/*, bugfix/*, chore/* -> develop
+          # 2) develop -> qa
+          # 3) qa -> main
+          if [[ "${BASE_REF}" == "develop" ]]; then
+            if [[ ! "${HEAD_REF}" =~ ^(feature|bugfix|chore)/ ]]; then
+              echo "For develop, source branch must start with feature/, bugfix/, or chore/"
+              exit 1
+            fi
+          fi
+
+          if [[ "${BASE_REF}" == "qa" && "${HEAD_REF}" != "develop" ]]; then
+            echo "Only develop -> qa is allowed in this PoC"
+            exit 1
+          fi
+
+          if [[ "${BASE_REF}" == "main" && "${HEAD_REF}" != "qa" ]]; then
+            echo "Only qa -> main is allowed in this PoC"
+            exit 1
+          fi
+
+          echo "Promotion route is valid"
+
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      adsl: ${{ steps.filter.outputs.adsl }}
+      adf: ${{ steps.filter.outputs.adf }}
+      airflow: ${{ steps.filter.outputs.airflow }}
+      dbt: ${{ steps.filter.outputs.dbt }}
+      databricks: ${{ steps.filter.outputs.databricks }}
+      platform: ${{ steps.filter.outputs.platform }}
+      any: ${{ steps.filter.outputs.any }}
+      adsl_files: ${{ steps.filter.outputs.adsl_files }}
+      adf_files: ${{ steps.filter.outputs.adf_files }}
+      airflow_files: ${{ steps.filter.outputs.airflow_files }}
+      dbt_files: ${{ steps.filter.outputs.dbt_files }}
+      databricks_files: ${{ steps.filter.outputs.databricks_files }}
+      platform_files: ${{ steps.filter.outputs.platform_files }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed domains
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: shell
+          filters: |
+            adsl:
+              - 'adsl/**'
+            adf:
+              - 'adf/**'
+            airflow:
+              - 'airflow/**'
+            dbt:
+              - 'dbt/**'
+            databricks:
+              - 'databricks/**'
+            platform:
+              - '.github/**'
+              - 'docs/**'
+              - 'README.md'
+            any:
+              - 'adsl/**'
+              - 'adf/**'
+              - 'airflow/**'
+              - 'dbt/**'
+              - 'databricks/**'
+              - '.github/**'
+              - 'docs/**'
+              - 'README.md'
+
+  validate-adsl:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.adsl == 'true'
+    steps:
+      - name: Simulate ADSL validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running ADSL validations"
+          echo "Running ADSL tests"
+
+          if grep -Fqi "[poc-fail-adsl]" <<< "${PR_BODY}"; then
+            echo "Forced failure for ADSL tests"
+            exit 1
+          fi
+
+          echo "ADSL validation passed"
+
+  validate-adf:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.adf == 'true'
+    steps:
+      - name: Simulate ADF validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running ADF pipeline validations"
+          echo "Running ADF tests"
+
+          if grep -Fqi "[poc-fail-adf]" <<< "${PR_BODY}"; then
+            echo "Forced failure for ADF tests"
+            exit 1
+          fi
+
+          echo "ADF validation passed"
+
+  validate-airflow:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.airflow == 'true'
+    steps:
+      - name: Simulate Airflow validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running Airflow DAG validations"
+          echo "Running Airflow tests"
+
+          if grep -Fqi "[poc-fail-airflow]" <<< "${PR_BODY}"; then
+            echo "Forced failure for Airflow tests"
+            exit 1
+          fi
+
+          echo "Airflow validation passed"
+
+  validate-dbt:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.dbt == 'true'
+    steps:
+      - name: Simulate dbt validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running dbt model validations"
+          echo "Running dbt tests"
+
+          if grep -Fqi "[poc-fail-dbt]" <<< "${PR_BODY}"; then
+            echo "Forced failure for dbt tests"
+            exit 1
+          fi
+
+          echo "dbt validation passed"
+
+  trigger-dbt-cloud-ci:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes, validate-dbt]
+    if: needs.detect-changes.outputs.dbt == 'true'
+    steps:
+      - name: Simulate dbt Cloud CI trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          TARGET_BRANCH: ${{ github.base_ref }}
+        run: |
+          echo "Simulating dbt Cloud CI trigger after dbt validations"
+          echo "POST /api/v2/accounts/{account_id}/jobs/{job_id}/run/"
+          echo "payload={\"cause\":\"PoC PR ${PR_NUMBER}\",\"git_branch\":\"${SOURCE_BRANCH}\"}"
+          echo "status=202 accepted (simulated)"
+          echo "source=${SOURCE_BRANCH} target=${TARGET_BRANCH}"
+
+  validate-databricks:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.databricks == 'true'
+    steps:
+      - name: Simulate Databricks validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running Databricks notebook validations"
+          echo "Running Databricks tests"
+
+          if grep -Fqi "[poc-fail-databricks]" <<< "${PR_BODY}"; then
+            echo "Forced failure for Databricks tests"
+            exit 1
+          fi
+
+          echo "Databricks validation passed"
+
+  validate-platform:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.platform == 'true'
+    steps:
+      - name: Simulate platform validation and tests
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Running platform validations"
+          echo "Running platform tests"
+
+          if grep -Fqi "[poc-fail-platform]" <<< "${PR_BODY}"; then
+            echo "Forced failure for platform tests"
+            exit 1
+          fi
+
+          echo "Platform validation passed"
+
+  no-relevant-paths:
+    runs-on: ubuntu-latest
+    needs: [check-promotion-route, detect-changes]
+    if: needs.detect-changes.outputs.any != 'true'
+    steps:
+      - name: No scoped paths changed
+        run: echo "No relevant paths changed for this PoC"
+
+  pr-summary:
+    runs-on: ubuntu-latest
+    needs:
+      - check-promotion-route
+      - detect-changes
+      - validate-adsl
+      - validate-adf
+      - validate-airflow
+      - validate-dbt
+      - validate-databricks
+      - trigger-dbt-cloud-ci
+      - validate-platform
+      - no-relevant-paths
+    if: always()
+    steps:
+      - name: Build summary
+        run: |
+          echo "PR validation workflow completed"
+          echo "Changed domains:"
+          echo "  adsl=${{ needs.detect-changes.outputs.adsl }}"
+          echo "  adf=${{ needs.detect-changes.outputs.adf }}"
+          echo "  airflow=${{ needs.detect-changes.outputs.airflow }}"
+          echo "  dbt=${{ needs.detect-changes.outputs.dbt }}"
+          echo "  databricks=${{ needs.detect-changes.outputs.databricks }}"
+          echo "  platform=${{ needs.detect-changes.outputs.platform }}"
+
+      - name: Publish PR evidence summary
+        run: |
+          {
+            echo "# PR Validation Evidence"
+            echo
+            echo "## Promotion Route"
+            echo "- Source branch: ${{ needs.check-promotion-route.outputs.head_ref }}"
+            echo "- Target branch: ${{ needs.check-promotion-route.outputs.base_ref }}"
+            echo
+            echo "## Path Detection"
+            echo "- adsl: ${{ needs.detect-changes.outputs.adsl }}"
+            echo "- adf: ${{ needs.detect-changes.outputs.adf }}"
+            echo "- airflow: ${{ needs.detect-changes.outputs.airflow }}"
+            echo "- dbt: ${{ needs.detect-changes.outputs.dbt }}"
+            echo "- databricks: ${{ needs.detect-changes.outputs.databricks }}"
+            echo "- platform: ${{ needs.detect-changes.outputs.platform }}"
+            echo
+            echo "## Changed Files By Domain"
+            echo "- adsl: ${{ needs.detect-changes.outputs.adsl_files }}"
+            echo "- adf: ${{ needs.detect-changes.outputs.adf_files }}"
+            echo "- airflow: ${{ needs.detect-changes.outputs.airflow_files }}"
+            echo "- dbt: ${{ needs.detect-changes.outputs.dbt_files }}"
+            echo "- databricks: ${{ needs.detect-changes.outputs.databricks_files }}"
+            echo "- platform: ${{ needs.detect-changes.outputs.platform_files }}"
+            echo
+            echo "## Result"
+            echo "Validations and tests were executed only for domains marked as true above."
+            echo
+            echo "## dbt Cloud CI Simulation"
+            echo "- Triggered: ${{ needs.detect-changes.outputs.dbt }}"
+            echo "- Runs only when dbt path changes and dbt validation passes"
+            echo
+            echo "## Forced Failure Controls"
+            echo "Add one of these tags to PR body to force a failure by domain:"
+            echo "- [poc-fail-adsl]"
+            echo "- [poc-fail-adf]"
+            echo "- [poc-fail-airflow]"
+            echo "- [poc-fail-dbt]"
+            echo "- [poc-fail-databricks]"
+            echo "- [poc-fail-platform]"
+          } >> "$GITHUB_STEP_SUMMARY"

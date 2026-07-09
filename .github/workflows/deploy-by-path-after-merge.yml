@@ -1,0 +1,210 @@
+name: Deploy By Path After Merge
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - qa
+      - main
+    types:
+      - closed
+
+jobs:
+  set-environment:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      target_env: ${{ steps.env.outputs.target_env }}
+      target_branch: ${{ steps.env.outputs.target_branch }}
+      source_branch: ${{ steps.env.outputs.source_branch }}
+    steps:
+      - name: Resolve deployment environment from target branch
+        id: env
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [[ "${BASE_REF}" == "develop" ]]; then
+            echo "target_env=dev" >> "$GITHUB_OUTPUT"
+          elif [[ "${BASE_REF}" == "qa" ]]; then
+            echo "target_env=qa" >> "$GITHUB_OUTPUT"
+          elif [[ "${BASE_REF}" == "main" ]]; then
+            echo "target_env=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported target branch ${BASE_REF}"
+            exit 1
+          fi
+
+          echo "target_branch=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "source_branch=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+
+  detect-changes:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      adsl: ${{ steps.filter.outputs.adsl }}
+      adf: ${{ steps.filter.outputs.adf }}
+      airflow: ${{ steps.filter.outputs.airflow }}
+      dbt: ${{ steps.filter.outputs.dbt }}
+      databricks: ${{ steps.filter.outputs.databricks }}
+      platform: ${{ steps.filter.outputs.platform }}
+      any: ${{ steps.filter.outputs.any }}
+      adsl_files: ${{ steps.filter.outputs.adsl_files }}
+      adf_files: ${{ steps.filter.outputs.adf_files }}
+      airflow_files: ${{ steps.filter.outputs.airflow_files }}
+      dbt_files: ${{ steps.filter.outputs.dbt_files }}
+      databricks_files: ${{ steps.filter.outputs.databricks_files }}
+      platform_files: ${{ steps.filter.outputs.platform_files }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed domains in merged PR
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: shell
+          filters: |
+            adsl:
+              - 'adsl/**'
+            adf:
+              - 'adf/**'
+            airflow:
+              - 'airflow/**'
+            dbt:
+              - 'dbt/**'
+            databricks:
+              - 'databricks/**'
+            platform:
+              - '.github/**'
+              - 'docs/**'
+              - 'README.md'
+            any:
+              - 'adsl/**'
+              - 'adf/**'
+              - 'airflow/**'
+              - 'dbt/**'
+              - 'databricks/**'
+              - '.github/**'
+              - 'docs/**'
+              - 'README.md'
+
+  deploy-adsl:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.adsl == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate ADSL deploy
+        run: |
+          echo "Deploying ADSL to ${{ needs.set-environment.outputs.target_env }}"
+
+  deploy-adf:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.adf == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate ADF deploy
+        run: |
+          echo "Deploying ADF pipelines to ${{ needs.set-environment.outputs.target_env }}"
+
+  deploy-airflow:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.airflow == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate Airflow deploy
+        run: |
+          echo "Deploying Airflow DAGs to ${{ needs.set-environment.outputs.target_env }}"
+
+  deploy-dbt:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.dbt == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate dbt deploy
+        run: |
+          echo "Deploying dbt assets to ${{ needs.set-environment.outputs.target_env }}"
+
+  deploy-databricks:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.databricks == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate Databricks deploy
+        run: |
+          echo "Deploying Databricks assets to ${{ needs.set-environment.outputs.target_env }}"
+
+  deploy-platform:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: Simulate platform deploy
+        run: |
+          echo "Deploying platform assets to ${{ needs.set-environment.outputs.target_env }}"
+
+  no-relevant-paths:
+    if: github.event.pull_request.merged == true && needs.detect-changes.outputs.any != 'true'
+    runs-on: ubuntu-latest
+    needs: [set-environment, detect-changes]
+    steps:
+      - name: No scoped deployments needed
+        run: |
+          echo "No relevant domain paths changed"
+          echo "No deployments required"
+
+  deploy-summary:
+    if: always() && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    needs:
+      - set-environment
+      - detect-changes
+      - deploy-adsl
+      - deploy-adf
+      - deploy-airflow
+      - deploy-dbt
+      - deploy-databricks
+      - deploy-platform
+      - no-relevant-paths
+    steps:
+      - name: Build deployment summary
+        run: |
+          echo "Deployment workflow completed"
+          echo "Target branch: ${{ needs.set-environment.outputs.target_branch }}"
+          echo "Target environment: ${{ needs.set-environment.outputs.target_env }}"
+          echo "Changed domains:"
+          echo "  adsl=${{ needs.detect-changes.outputs.adsl }}"
+          echo "  adf=${{ needs.detect-changes.outputs.adf }}"
+          echo "  airflow=${{ needs.detect-changes.outputs.airflow }}"
+          echo "  dbt=${{ needs.detect-changes.outputs.dbt }}"
+          echo "  databricks=${{ needs.detect-changes.outputs.databricks }}"
+          echo "  platform=${{ needs.detect-changes.outputs.platform }}"
+
+      - name: Publish deployment evidence summary
+        run: |
+          {
+            echo "# Deployment Evidence"
+            echo
+            echo "## Promotion Context"
+            echo "- Source branch: ${{ needs.set-environment.outputs.source_branch }}"
+            echo "- Target branch: ${{ needs.set-environment.outputs.target_branch }}"
+            echo "- Target environment: ${{ needs.set-environment.outputs.target_env }}"
+            echo
+            echo "## Path Detection"
+            echo "- adsl: ${{ needs.detect-changes.outputs.adsl }}"
+            echo "- adf: ${{ needs.detect-changes.outputs.adf }}"
+            echo "- airflow: ${{ needs.detect-changes.outputs.airflow }}"
+            echo "- dbt: ${{ needs.detect-changes.outputs.dbt }}"
+            echo "- databricks: ${{ needs.detect-changes.outputs.databricks }}"
+            echo "- platform: ${{ needs.detect-changes.outputs.platform }}"
+            echo
+            echo "## Changed Files By Domain"
+            echo "- adsl: ${{ needs.detect-changes.outputs.adsl_files }}"
+            echo "- adf: ${{ needs.detect-changes.outputs.adf_files }}"
+            echo "- airflow: ${{ needs.detect-changes.outputs.airflow_files }}"
+            echo "- dbt: ${{ needs.detect-changes.outputs.dbt_files }}"
+            echo "- databricks: ${{ needs.detect-changes.outputs.databricks_files }}"
+            echo "- platform: ${{ needs.detect-changes.outputs.platform_files }}"
+            echo
+            echo "## Result"
+            echo "Deploy jobs ran only for domains marked as true above."
+          } >> "$GITHUB_STEP_SUMMARY"

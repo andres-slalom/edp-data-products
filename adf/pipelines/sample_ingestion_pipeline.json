@@ -1,0 +1,7 @@
+{
+  "name": "sample_ingestion_pipeline",
+  "properties": {
+    "description": "Sample ADF pipeline for path filter PoC",
+    "activities": []
+  }
+}
