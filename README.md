@@ -6,7 +6,7 @@ The repository keeps the current folders as-is, but the CI/CD behavior is now ce
 
 ## Promotion Model 
 
-The PoC uses three long-lived branches:
+The PoC uses three long-lived branches :
 
 - `develop`
 - `qa`
