@@ -14,6 +14,7 @@ on:
 
 jobs:
   check-promotion-route:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     outputs:
       base_ref: ${{ steps.route.outputs.base_ref }}
@@ -54,6 +55,7 @@ jobs:
           echo "Promotion route is valid"
 
   detect-changes:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     outputs:
       adsl: ${{ steps.filter.outputs.adsl }}
@@ -103,6 +105,7 @@ jobs:
               - 'README.md'
 
   validate-adsl:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.adsl == 'true'
@@ -122,6 +125,7 @@ jobs:
           echo "ADSL validation passed"
 
   validate-adf:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.adf == 'true'
@@ -141,6 +145,7 @@ jobs:
           echo "ADF validation passed"
 
   validate-airflow:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.airflow == 'true'
@@ -160,6 +165,7 @@ jobs:
           echo "Airflow validation passed"
 
   validate-dbt:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.dbt == 'true'
@@ -179,6 +185,7 @@ jobs:
           echo "dbt validation passed"
 
   trigger-dbt-cloud-ci:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes, validate-dbt]
     if: needs.detect-changes.outputs.dbt == 'true'
@@ -196,6 +203,7 @@ jobs:
           echo "source=${SOURCE_BRANCH} target=${TARGET_BRANCH}"
 
   validate-databricks:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.databricks == 'true'
@@ -215,6 +223,7 @@ jobs:
           echo "Databricks validation passed"
 
   validate-platform:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.platform == 'true'
@@ -234,6 +243,7 @@ jobs:
           echo "Platform validation passed"
 
   no-relevant-paths:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs: [check-promotion-route, detect-changes]
     if: needs.detect-changes.outputs.any != 'true'
@@ -242,6 +252,7 @@ jobs:
         run: echo "No relevant paths changed for this PoC"
 
   pr-summary:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     needs:
       - check-promotion-route
@@ -266,6 +277,40 @@ jobs:
           echo "  dbt=${{ needs.detect-changes.outputs.dbt }}"
           echo "  databricks=${{ needs.detect-changes.outputs.databricks }}"
           echo "  platform=${{ needs.detect-changes.outputs.platform }}"
+
+      - name: Evaluate upstream job results
+        run: |
+          echo "Upstream job results:"
+          echo "  check-promotion-route=${{ needs.check-promotion-route.result }}"
+          echo "  detect-changes=${{ needs.detect-changes.result }}"
+          echo "  validate-adsl=${{ needs.validate-adsl.result }}"
+          echo "  validate-adf=${{ needs.validate-adf.result }}"
+          echo "  validate-airflow=${{ needs.validate-airflow.result }}"
+          echo "  validate-dbt=${{ needs.validate-dbt.result }}"
+          echo "  trigger-dbt-cloud-ci=${{ needs.trigger-dbt-cloud-ci.result }}"
+          echo "  validate-databricks=${{ needs.validate-databricks.result }}"
+          echo "  validate-platform=${{ needs.validate-platform.result }}"
+          echo "  no-relevant-paths=${{ needs.no-relevant-paths.result }}"
+
+          if [[ "${{ needs.check-promotion-route.result }}" == "failure" ]]; then
+            echo "Promotion route validation failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.detect-changes.result }}" == "failure" ]]; then
+            echo "Path detection failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.validate-adsl.result }}" == "failure" || \
+                "${{ needs.validate-adf.result }}" == "failure" || \
+                "${{ needs.validate-airflow.result }}" == "failure" || \
+                "${{ needs.validate-dbt.result }}" == "failure" || \
+                "${{ needs.validate-databricks.result }}" == "failure" || \
+                "${{ needs.validate-platform.result }}" == "failure" ]]; then
+            echo "One or more domain validations failed"
+            exit 1
+          fi
 
       - name: Publish PR evidence summary
         run: |
@@ -307,4 +352,16 @@ jobs:
             echo "- [poc-fail-dbt]"
             echo "- [poc-fail-databricks]"
             echo "- [poc-fail-platform]"
+            echo
+            echo "## Upstream Job Results"
+            echo "- check-promotion-route: ${{ needs.check-promotion-route.result }}"
+            echo "- detect-changes: ${{ needs.detect-changes.result }}"
+            echo "- validate-adsl: ${{ needs.validate-adsl.result }}"
+            echo "- validate-adf: ${{ needs.validate-adf.result }}"
+            echo "- validate-airflow: ${{ needs.validate-airflow.result }}"
+            echo "- validate-dbt: ${{ needs.validate-dbt.result }}"
+            echo "- trigger-dbt-cloud-ci: ${{ needs.trigger-dbt-cloud-ci.result }}"
+            echo "- validate-databricks: ${{ needs.validate-databricks.result }}"
+            echo "- validate-platform: ${{ needs.validate-platform.result }}"
+            echo "- no-relevant-paths: ${{ needs.no-relevant-paths.result }}"
           } >> "$GITHUB_STEP_SUMMARY"
